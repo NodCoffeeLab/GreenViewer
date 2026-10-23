@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>노드커피랩 생두 측정 데이터 조회 및 분석기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    :root {
+      --table-font-size: 11.5pt;
+    }
+    .custom-table {
+      font-size: var(--table-font-size);
+    }
+    .custom-table th, .custom-table td {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 220px;
+      user-select: text;
+    }
+    .resizer {
+      position: absolute;
+      right: 0;
+      top: 0;
+      height: 100%;
+      width: 5px;
+      cursor: col-resize;
+      user-select: none;
+    }
+    .resizer:hover {
+      background-color: #059669;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col font-sans">
+
+  <!-- 🛑 [구글 웹앱 연동 주소 설정] -->
+  <script>
+    const GOOGLE_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwR_Z1gS5QO2zhHWk5PyyisijQp8P04jVKtrr2C6j8jrs18sgreQnvZ8TGG2piAsiYC/exec";
+  </script>
+
+  <!-- 상단 컨트롤 헤더 -->
+  <header class="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-30 shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      
+      <!-- 타이틀 -->
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow">☕</div>
+        <div>
+          <h1 class="text-base font-bold text-gray-900 leading-tight">생두 측정 데이터 분석 및 조회기</h1>
+          <p class="text-[11px] text-gray-400 font-mono">노드커피랩 Node Coffee Lab</p>
+        </div>
+      </div>
+
+      <!-- 상단 컨트롤 툴바 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- 프리셋 드롭다운 -->
+        <div class="flex items-center gap-1 bg-gray-50 border border-gray-300 rounded-lg px-2 py-1">
+          <label class="text-xs font-semibold text-gray-600">프리셋:</label>
+          <select id="presetSelect" onchange="applyPreset(this.value)" class="text-xs font-bold bg-transparent outline-none">
+            <option value="custom">사용자 지정</option>
+            <option value="basic">기본 정보 보기</option>
+            <option value="moisture_density">수분 & 밀도 분석</option>
+            <option value="size_physical">크기 & 물리 특성</option>
+          </select>
+        </div>
+
+        <!-- 항목 순서 설정 버튼 -->
+        <button type="button" onclick="openColumnSettingModal()" class="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg border flex items-center gap-1 transition">
+          ⚙️ 항목 및 순서
+        </button>
+
+        <!-- 단계 표시 토글 -->
+        <button type="button" id="toggleStepBtn" onclick="toggleStepDisplay()" class="px-2.5 py-1.5 bg-gray-100 text-gray-600 border text-xs font-bold rounded-lg transition flex items-center gap-1">
+          <span>단계 표시</span> <span id="toggleStepStatus" class="text-[10px] bg-gray-300 text-gray-700 px-1.5 py-0.2 rounded">OFF</span>
+        </button>
+
+        <!-- 백분위 표시 토글 -->
+        <button type="button" id="togglePctBtn" onclick="togglePctDisplay()" class="px-2.5 py-1.5 bg-gray-100 text-gray-600 border text-xs font-bold rounded-lg transition flex items-center gap-1">
+          <span>백분위 표시</span> <span id="togglePctStatus" class="text-[10px] bg-gray-300 text-gray-700 px-1.5 py-0.2 rounded">OFF</span>
+        </button>
+
+        <!-- 폰트 크기 조절기 -->
+        <div class="flex items-center border border-gray-300 rounded-lg bg-gray-50 px-1 py-0.5">
+          <button type="button" onclick="changeFontSize(-1)" class="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-gray-200 rounded text-sm">-</button>
+          <span id="fontSizeDisplay" class="px-1 text-xs font-bold font-mono text-gray-800">11.5pt</span>
+          <button type="button" onclick="changeFontSize(1)" class="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-gray-200 rounded text-sm">+</button>
+          <button type="button" id="fontStepBtn" onclick="toggleFontStep()" class="ml-1 text-[9px] px-1 bg-gray-200 text-gray-600 rounded font-bold">0.5</button>
+        </div>
+
+        <!-- 3D 크기 비교 버튼 -->
+        <button type="button" id="btn3D" onclick="open3DViewer()" disabled class="px-3 py-1.5 bg-gray-300 text-gray-500 text-xs font-bold rounded-lg flex items-center gap-1 cursor-not-allowed transition">
+          🧊 3D 크기 비교 (<span id="selectedCount">0</span>)
+        </button>
+
+        <!-- 표 복사 버튼 -->
+        <button type="button" onclick="copyTableToClipboard()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1 transition">
+          📋 표 복사 (엑셀용)
+        </button>
+
+        <!-- 조회 버튼 -->
+        <button type="button" onclick="renderFilteredTable()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition active:scale-95">
+          🔍 조회
+        </button>
+      </div>
+
+    </div>
+
+    <!-- 하단 상태 바 -->
+    <div class="flex items-center justify-between mt-2 pt-2 border-t border-gray-150 text-xs">
+      <div id="statusText" class="text-gray-500 font-medium">스프레드시트에서 데이터를 로드 중입니다...</div>
+      <div class="flex items-center gap-2">
+        <input type="text" id="quickSearchInput" oninput="quickSearchFilter(this.value)" placeholder="현재 표 내 빠른 검색..." class="px-2 py-1 text-xs border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-emerald-500 w-44">
+      </div>
+    </div>
+  </header>
+
+  <!-- 데이터 테이블 -->
+  <main class="flex-1 overflow-auto p-4">
+    <div class="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+      <div class="overflow-x-auto max-h-[calc(100vh-140px)]" id="tableContainer">
+        <table id="dataTable" class="w-full text-left border-collapse custom-table">
+          <thead class="bg-gray-50 sticky top-0 z-10 border-b border-gray-200 text-gray-700">
+            <tr id="tableHeaderRow"></tr>
+          </thead>
+          <tbody id="tableBody" class="divide-y divide-gray-100 font-sans"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- 상세 내용 모달 -->
+  <div id="cellDetailModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-4 space-y-3">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 id="cellDetailHeader" class="text-sm font-bold text-gray-800">상세 내용</h3>
+        <button type="button" onclick="closeCellDetailModal()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
+      </div>
+      <div id="cellDetailBody" class="text-xs text-gray-700 break-words max-h-60 overflow-y-auto whitespace-pre-wrap font-sans bg-gray-50 p-3 rounded-lg border"></div>
+      <div class="text-right">
+        <button type="button" onclick="closeCellDetailModal()" class="px-3 py-1 bg-gray-200 text-gray-700 font-bold text-xs rounded hover:bg-gray-300">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 항목 설정 모달 -->
+  <div id="columnModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-3xl w-full p-5 space-y-4 max-h-[90vh] flex flex-col">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h2 class="text-base font-bold text-gray-800 flex items-center gap-1.5">
+          <span>⚙️ 조회할 항목 및 순서 설정</span>
+          <span class="text-[10px] text-gray-400 font-normal">(기기 간 영구 동기화)</span>
+        </h2>
+        <button type="button" onclick="closeColumnSettingModal()" class="text-gray-400 hover:text-gray-600 font-bold text-lg">✕</button>
+      </div>
+
+      <div class="bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 flex-1">
+          <label class="text-xs font-bold text-emerald-800 shrink-0">새 프리셋 저장:</label>
+          <input type="text" id="newPresetName" placeholder="프리셋 이름 (예: 수분 및 외형 세트)" class="text-xs px-2 py-1 border border-emerald-300 rounded bg-white flex-1 outline-none">
+        </div>
+        <button type="button" onclick="saveAsNewPreset()" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded transition">저장</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 flex-1 min-h-[350px] overflow-hidden">
+        <div class="flex flex-col border rounded-lg p-2 bg-gray-50">
+          <div class="mb-2">
+            <input type="text" id="columnSearchInput" oninput="filterColumnList(this.value)" placeholder="항목 검색..." class="w-full text-xs p-1.5 border rounded outline-none focus:ring-1 focus:ring-emerald-500">
+          </div>
+          <div class="flex items-center justify-between mb-1 px-1 text-[11px] text-gray-500 font-semibold">
+            <span>선택 가능한 전체 항목</span>
+            <div class="space-x-1">
+              <button type="button" onclick="selectAllColumns(true)" class="text-emerald-600 font-bold hover:underline">전체</button>
+              <span>|</span>
+              <button type="button" onclick="selectAllColumns(false)" class="text-red-500 font-bold hover:underline">해제</button>
+            </div>
+          </div>
+          <div id="allColumnsList" class="flex-1 overflow-y-auto space-y-1 pr-1 text-xs"></div>
+        </div>
+
+        <div class="flex flex-col border rounded-lg p-2 bg-white">
+          <div class="mb-2 text-xs font-bold text-gray-700 flex justify-between items-center">
+            <span>선택된 항목 순서 (<span id="selectedColCount">0</span>)</span>
+            <span class="text-[10px] text-gray-400 font-normal">▲▼ 버튼으로 순서 이동</span>
+          </div>
+          <div id="selectedColumnsList" class="flex-1 overflow-y-auto space-y-1 pr-1 text-xs"></div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 border-t pt-3">
+        <button type="button" onclick="closeColumnSettingModal()" class="px-4 py-2 bg-gray-200 text-gray-700 font-bold text-xs rounded-lg hover:bg-gray-300">취소</button>
+        <button type="button" onclick="applyAndSaveSettings()" class="px-5 py-2 bg-emerald-600 text-white font-bold text-xs rounded-lg shadow hover:bg-emerald-700">적용 및 동기화 저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3D 비교 모달 -->
+  <div id="modal3D" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full p-4 space-y-3 flex flex-col max-h-[90vh]">
+      <div class="flex justify-between items-center border-b pb-2">
+        <div class="flex items-center gap-3">
+          <h3 class="text-sm font-bold text-gray-800">🧊 생두 3D 반타원체 크기 비교</h3>
+          <div class="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg border text-xs">
+            <button type="button" id="btnModeOverlay" onclick="set3DMode('overlay')" class="px-2.5 py-1 font-bold rounded bg-emerald-600 text-white shadow-sm">중첩 비교</button>
+            <button type="button" id="btnModeSide" onclick="set3DMode('side')" class="px-2.5 py-1 font-bold rounded text-gray-600">나란히 비교</button>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="capture3DImage()" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded shadow flex items-center gap-1">
+            📷 PNG 저장
+          </button>
+          <button type="button" onclick="close3DViewer()" class="text-gray-400 hover:text-gray-600 font-bold text-lg px-1">✕</button>
+        </div>
+      </div>
+
+      <div class="relative w-full h-[400px] bg-gray-900 rounded-lg overflow-hidden border">
+        <div id="canvas3dContainer" class="w-full h-full"></div>
+        <div class="absolute bottom-2 left-2 text-[10px] text-gray-400 bg-black/50 px-2 py-1 rounded">
+          마우스 좌클릭: 360° 회전 | 휠: 확대/축소 | 우클릭: 이동
+        </div>
+      </div>
+
+      <div class="overflow-x-auto max-h-36 border rounded-lg">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead class="bg-gray-100 text-gray-600 font-bold border-b">
+            <tr>
+              <th class="p-2">구분</th>
+              <th class="p-2">커피 이름</th>
+              <th class="p-2">길이 (L)</th>
+              <th class="p-2">폭 (W)</th>
+              <th class="p-2">두께 (T)</th>
+              <th class="p-2">부피 평균</th>
+              <th class="p-2">경도 평균</th>
+            </tr>
+          </thead>
+          <tbody id="specTableBody" class="divide-y text-gray-700 font-sans"></tbody>
+        </table>
+      </div>
+
+      <div class="text-right border-t pt-2">
+        <button type="button" onclick="close3DViewer()" class="px-4 py-1.5 bg-gray-200 text-gray-700 font-bold text-xs rounded hover:bg-gray-300">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allHeaders = [];
+    let rawDataRows = [];
+    let activeColumns = [];
+    let savedPresets = {};
+    let isStepOn = false;
+    let isPctOn = false;
+    let currentFontSize = 11.5;
+    let fontStep = 0.5;
+    let currentSortCol = null;
+    let isSortAsc = true;
+    let selectedRowIndices = new Set();
+
+    const STEP_PCT_MAP = {
+      "Omix 수분 평균": { step: "Omix 수분 단계", pct: "Omix 수분 백분위" },
+      "M1 수분 평균": { step: "M1 수분 단계", pct: "M1 수분 백분위" },
+      "MD-500 수분 평균": { step: "MD-500 수분 단계", pct: "MD-500 수분 백분위" },
+      "Omix 밀도 평균": { step: "Omix 밀도 단계", pct: "Omix 밀도 백분위" },
+      "M1 밀도 평균": { step: "M1 밀도 단계", pct: "M1 밀도 백분위" },
+      "MD-500 밀도 평균": { step: "MD-500 밀도 단계", pct: "MD-500 밀도 백분위" },
+      "Omix 수분활성도 평균": { step: "Omix 수분활성도 단계", pct: "Omix 수분활성도 백분위" },
+      "Rotronic 수분활성도 평균": { step: "Rotronic 수분활성도 단계", pct: "Rotronic 수분활성도 백분위" },
+      "Omix 스크린 사이즈 평균": { step: "Omix 스크린 사이즈 단계", pct: "Omix 스크린 사이즈 백분위" },
+      "Omix 부피 평균": { step: "Omix 부피 단계", pct: "Omix 부피 백분위" },
+      "부피 평균": { step: "부피 단계", pct: "부피 백분위" },
+      "표면적 평균": { step: "표면적 단계", pct: "표면적 백분위" },
+      "경도 평균": { step: "경도 단계", pct: "경도 백분위" }
+    };
+
+    const DEFAULT_PRESETS = {
+      basic: ["번호", "커피 이름", "측정연월", "수확연도", "공급사", "국가", "품종", "프로세싱 대분류"],
+      moisture_density: ["번호", "커피 이름", "Omix 수분 평균", "M1 수분 평균", "MD-500 수분 평균", "Omix 밀도 평균", "M1 밀도 평균", "MD-500 밀도 평균"],
+      size_physical: ["번호", "커피 이름", "길이 평균", "폭 평균", "두께 평균", "부피 평균", "표면적 평균", "경도 평균"]
+    };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadInitialData();
+    });
+
+    async function loadInitialData() {
+      try {
+        document.getElementById('statusText').innerText = "스프레드시트에서 데이터를 로드 중입니다...";
+        
+        // 💡 배포 URL을 통한 안전한 데이터 로딩
+        const dataRes = await fetch(`${GOOGLE_WEB_APP_URL}?action=getDataAnalysis`);
+        const dataJson = await dataRes.json();
+        
+        if (dataJson.error) {
+          alert(dataJson.error);
+          return;
+        }
+
+        allHeaders = dataJson.headers || [];
+        rawDataRows = dataJson.rows || [];
+
+        try {
+          const settingRes = await fetch(`${GOOGLE_WEB_APP_URL}?action=getSettings`);
+          const settings = await settingRes.json();
+          if (settings.presets) savedPresets = settings.presets;
+          if (settings.activeColumns && settings.activeColumns.length > 0) {
+            activeColumns = settings.activeColumns;
+          } else {
+            activeColumns = [...DEFAULT_PRESETS.basic];
+          }
+          if (settings.fontSize) {
+            currentFontSize = settings.fontSize;
+            updateFontSizeUI();
+          }
+        } catch(e) {
+          activeColumns = [...DEFAULT_PRESETS.basic];
+        }
+
+        buildPresetDropdown();
+        renderFilteredTable();
+        document.getElementById('statusText').innerText = `총 ${rawDataRows.length}개의 데이터 로드 완료`;
+      } catch (err) {
+        document.getElementById('statusText').innerText = "데이터 동기화 실패. Apps Script 배포 버전을 확인하세요.";
+        console.error(err);
+      }
+    }
+
+    function getDisplayColumns() {
+      const result = [];
+      activeColumns.forEach(col => {
+        result.push(col);
+        const pair = STEP_PCT_MAP[col];
+        if (pair) {
+          if (isStepOn && allHeaders.includes(pair.step)) result.push(pair.step);
+          if (isPctOn && allHeaders.includes(pair.pct)) result.push(pair.pct);
+        }
+      });
+      return result;
+    }
+
+    function renderFilteredTable() {
+      const displayCols = getDisplayColumns();
+      const headerRow = document.getElementById('tableHeaderRow');
+      headerRow.innerHTML = '';
+
+      const thCheck = document.createElement('th');
+      thCheck.className = "p-2.5 w-10 text-center";
+      thCheck.innerHTML = `<input type="checkbox" onchange="toggleSelectAllRows(this.checked)" class="rounded text-emerald-600">`;
+      headerRow.appendChild(thCheck);
+
+      displayCols.forEach((colName) => {
+        const th = document.createElement('th');
+        th.className = "p-2.5 font-bold relative border-r border-gray-200 cursor-pointer select-none hover:bg-gray-100 transition";
+        let sortIcon = "⇅";
+        if (currentSortCol === colName) {
+          sortIcon = isSortAsc ? "▲" : "▼";
+        }
+        th.innerHTML = `
+          <div class="flex items-center justify-between pr-2" onclick="sortTableBy('${colName}')">
+            <span>${colName}</span>
+            <span class="text-[10px] text-gray-400 font-mono">${sortIcon}</span>
+          </div>
+          <div class="resizer"></div>
+        `;
+        setupColumnResizer(th);
+        headerRow.appendChild(th);
+      });
+
+      const filtered = [];
+      rawDataRows.forEach((row, originalIdx) => {
+        let isAllFilled = true;
+        for (let col of activeColumns) {
+          const cIdx = allHeaders.indexOf(col);
+          if (cIdx === -1) continue;
+          const val = row[cIdx];
+          if (val === "" || val === null || val === undefined) {
+            isAllFilled = false;
+            break;
+          }
+        }
+        if (isAllFilled) {
+          filtered.push({ row: row, originalIdx: originalIdx });
+        }
+      });
+
+      if (currentSortCol) {
+        const sIdx = allHeaders.indexOf(currentSortCol);
+        if (sIdx !== -1) {
+          filtered.sort((a, b) => {
+            let va = a.row[sIdx];
+            let vb = b.row[sIdx];
+            if (typeof va === 'number' && typeof vb === 'number') {
+              return isSortAsc ? va - vb : vb - va;
+            }
+            return isSortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+          });
+        }
+      }
+
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = '';
+
+      filtered.forEach((item) => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-emerald-50/50 transition border-b border-gray-100";
+
+        const tdCheck = document.createElement('td');
+        tdCheck.className = "p-2.5 text-center";
+        const isChecked = selectedRowIndices.has(item.originalIdx);
+        tdCheck.innerHTML = `<input type="checkbox" ${isChecked ? "checked" : ""} onchange="toggleRowSelection(${item.originalIdx}, this.checked)" class="rounded text-emerald-600">`;
+        tr.appendChild(tdCheck);
+
+        displayCols.forEach(colName => {
+          const td = document.createElement('td');
+          td.className = "p-2.5 border-r border-gray-100 cursor-pointer";
+          const colIdx = allHeaders.indexOf(colName);
+          let rawVal = colIdx !== -1 ? item.row[colIdx] : "";
+          
+          let displayVal = rawVal;
+          if (typeof rawVal === 'number') {
+            displayVal = Number.isInteger(rawVal) ? rawVal : Number(rawVal.toFixed(3));
+          }
+
+          if (colName.includes('단계') && displayVal !== "") {
+            td.innerHTML = `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">${displayVal}단계</span>`;
+          } else if (colName.includes('백분위') && typeof displayVal === 'number') {
+            td.innerHTML = `<span class="font-mono text-blue-700">${(displayVal * 100).toFixed(1)}%</span>`;
+          } else {
+            td.textContent = displayVal;
+          }
+
+          td.onclick = (e) => {
+            if (e.target.tagName !== 'INPUT') {
+              openCellDetailModal(colName, String(rawVal), item.row);
+            }
+          };
+
+          tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('statusText').innerText = `조회 완료: 전체 ${rawDataRows.length}건 중 ${filtered.length}건 선별됨`;
+    }
+
+    function sortTableBy(colName) {
+      if (currentSortCol === colName) {
+        isSortAsc = !isSortAsc;
+      } else {
+        currentSortCol = colName;
+        isSortAsc = true;
+      }
+      renderFilteredTable();
+    }
+
+    function setupColumnResizer(th) {
+      const resizer = th.querySelector('.resizer');
+      if (!resizer) return;
+      let startX, startWidth;
+
+      resizer.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        startX = e.pageX;
+        startWidth = th.offsetWidth;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+
+      function onMouseMove(e) {
+        const width = startWidth + (e.pageX - startX);
+        if (width > 60) {
+          th.style.width = width + 'px';
+          th.style.maxWidth = width + 'px';
+        }
+      }
+
+      function onMouseUp() {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      }
+    }
+
+    function changeFontSize(direction) {
+      currentFontSize = parseFloat((currentFontSize + direction * fontStep).toFixed(1));
+      if (currentFontSize < 8.0) currentFontSize = 8.0;
+      if (currentFontSize > 20.0) currentFontSize = 20.0;
+      updateFontSizeUI();
+      saveSettingsToBackend();
+    }
+
+    function toggleFontStep() {
+      fontStep = (fontStep === 0.5) ? 0.1 : 0.5;
+      document.getElementById('fontStepBtn').innerText = fontStep;
+    }
+
+    function updateFontSizeUI() {
+      document.documentElement.style.setProperty('--table-font-size', currentFontSize + 'pt');
+      document.getElementById('fontSizeDisplay').innerText = currentFontSize.toFixed(1) + 'pt';
+    }
+
+    function toggleStepDisplay() {
+      isStepOn = !isStepOn;
+      const btn = document.getElementById('toggleStepBtn');
+      const badge = document.getElementById('toggleStepStatus');
+      if (isStepOn) {
+        btn.className = "px-2.5 py-1.5 bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-lg transition flex items-center gap-1";
+        badge.className = "text-[10px] bg-emerald-600 text-white px-1.5 py-0.2 rounded";
+        badge.innerText = "ON";
+      } else {
+        btn.className = "px-2.5 py-1.5 bg-gray-100 text-gray-600 border text-xs font-bold rounded-lg transition flex items-center gap-1";
+        badge.className = "text-[10px] bg-gray-300 text-gray-700 px-1.5 py-0.2 rounded";
+        badge.innerText = "OFF";
+      }
+      renderFilteredTable();
+    }
+
+    function togglePctDisplay() {
+      isPctOn = !isPctOn;
+      const btn = document.getElementById('togglePctBtn');
+      const badge = document.getElementById('togglePctStatus');
+      if (isPctOn) {
+        btn.className = "px-2.5 py-1.5 bg-blue-100 text-blue-800 border border-blue-300 text-xs font-bold rounded-lg transition flex items-center gap-1";
+        badge.className = "text-[10px] bg-blue-600 text-white px-1.5 py-0.2 rounded";
+        badge.innerText = "ON";
+      } else {
+        btn.className = "px-2.5 py-1.5 bg-gray-100 text-gray-600 border text-xs font-bold rounded-lg transition flex items-center gap-1";
+        badge.className = "text-[10px] bg-gray-300 text-gray-700 px-1.5 py-0.2 rounded";
+        badge.innerText = "OFF";
+      }
+      renderFilteredTable();
+    }
+
+    function copyTableToClipboard() {
+      const displayCols = getDisplayColumns();
+      const rows = [];
+      rows.push(displayCols.join('\t'));
+
+      const trs = document.querySelectorAll('#tableBody tr');
+      trs.forEach(tr => {
+        const rowVals = [];
+        const tds = tr.querySelectorAll('td');
+        for (let i = 1; i < tds.length; i++) {
+          rowVals.push(tds[i].innerText.replace(/\n/g, ' ').trim());
+        }
+        rows.push(rowVals.join('\t'));
+      });
+
+      const tsvContent = rows.join('\n');
+      navigator.clipboard.writeText(tsvContent).then(() => {
+        alert("선택된 표가 클립보드에 복사되었습니다.\n엑셀이나 구글 스프레드시트에서 Ctrl + V 하세요.");
+      }).catch(err => {
+        alert("클립보드 복사 실패: " + err);
+      });
+    }
+
+    function openCellDetailModal(colName, value, row) {
+      const nameIdx = allHeaders.indexOf('커피 이름');
+      const coffeeName = nameIdx !== -1 ? row[nameIdx] : "";
+      document.getElementById('cellDetailHeader').innerText = `${coffeeName} - [${colName}]`;
+      document.getElementById('cellDetailBody').innerText = value || "(빈 값)";
+      document.getElementById('cellDetailModal').classList.remove('hidden');
+    }
+
+    function closeCellDetailModal() {
+      document.getElementById('cellDetailModal').classList.add('hidden');
+    }
+
+    function openColumnSettingModal() {
+      buildModalColumnLists();
+      document.getElementById('columnModal').classList.remove('hidden');
+    }
+
+    function closeColumnSettingModal() {
+      document.getElementById('columnModal').classList.add('hidden');
+    }
+
+    function buildModalColumnLists() {
+      const leftContainer = document.getElementById('allColumnsList');
+      leftContainer.innerHTML = '';
+      allHeaders.forEach(col => {
+        const isChecked = activeColumns.includes(col);
+        const div = document.createElement('label');
+        div.className = "flex items-center gap-2 p-1.5 hover:bg-gray-100 rounded cursor-pointer";
+        div.innerHTML = `
+          <input type="checkbox" value="${col}" ${isChecked ? "checked" : ""} onchange="onModalCheckboxChange(this)" class="rounded text-emerald-600">
+          <span class="truncate">${col}</span>
+        `;
+        leftContainer.appendChild(div);
+      });
+
+      buildSelectedColumnsList();
+    }
+
+    function buildSelectedColumnsList() {
+      const rightContainer = document.getElementById('selectedColumnsList');
+      rightContainer.innerHTML = '';
+      document.getElementById('selectedColCount').innerText = activeColumns.length;
+
+      activeColumns.forEach((col, idx) => {
+        const div = document.createElement('div');
+        div.className = "flex items-center justify-between p-1.5 border rounded bg-gray-50 text-xs";
+        div.innerHTML = `
+          <span class="truncate font-medium flex-1">${idx + 1}. ${col}</span>
+          <div class="flex items-center gap-1 shrink-0">
+            <button type="button" onclick="moveActiveColumn(${idx}, -1)" class="w-5 h-5 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded font-bold">▲</button>
+            <button type="button" onclick="moveActiveColumn(${idx}, 1)" class="w-5 h-5 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded font-bold">▼</button>
+            <button type="button" onclick="removeActiveColumn('${col}')" class="w-5 h-5 flex items-center justify-center text-red-500 hover:bg-red-50 rounded font-bold">✕</button>
+          </div>
+        `;
+        rightContainer.appendChild(div);
+      });
+    }
+
+    function onModalCheckboxChange(cb) {
+      const col = cb.value;
+      if (cb.checked) {
+        if (!activeColumns.includes(col)) activeColumns.push(col);
+      } else {
+        activeColumns = activeColumns.filter(c => c !== col);
+      }
+      buildSelectedColumnsList();
+    }
+
+    function moveActiveColumn(index, delta) {
+      const targetIdx = index + delta;
+      if (targetIdx < 0 || targetIdx >= activeColumns.length) return;
+      const temp = activeColumns[index];
+      activeColumns[index] = activeColumns[targetIdx];
+      activeColumns[targetIdx] = temp;
+      buildSelectedColumnsList();
+    }
+
+    function removeActiveColumn(col) {
+      activeColumns = activeColumns.filter(c => c !== col);
+      buildModalColumnLists();
+    }
+
+    function selectAllColumns(check) {
+      if (check) {
+        activeColumns = [...allHeaders];
+      } else {
+        activeColumns = [];
+      }
+      buildModalColumnLists();
+    }
+
+    function filterColumnList(query) {
+      const q = query.toLowerCase();
+      const labels = document.querySelectorAll('#allColumnsList label');
+      labels.forEach(l => {
+        const txt = l.innerText.toLowerCase();
+        l.style.display = txt.includes(q) ? 'flex' : 'none';
+      });
+    }
+
+    function applyAndSaveSettings() {
+      closeColumnSettingModal();
+      renderFilteredTable();
+      saveSettingsToBackend();
+    }
+
+    function saveAsNewPreset() {
+      const name = document.getElementById('newPresetName').value.trim();
+      if (!name) {
+        alert("프리셋 이름을 입력하세요.");
+        return;
+      }
+      savedPresets[name] = [...activeColumns];
+      buildPresetDropdown();
+      document.getElementById('presetSelect').value = name;
+      document.getElementById('newPresetName').value = "";
+      saveSettingsToBackend();
+      alert(`프리셋 '${name}'이(가) 저장되었습니다.`);
+    }
+
+    function buildPresetDropdown() {
+      const sel = document.getElementById('presetSelect');
+      sel.innerHTML = `
+        <option value="custom">사용자 지정</option>
+        <option value="basic">기본 정보 보기</option>
+        <option value="moisture_density">수분 & 밀도 분석</option>
+        <option value="size_physical">크기 & 물리 특성</option>
+      `;
+      Object.keys(savedPresets).forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.innerText = name;
+        sel.appendChild(opt);
+      });
+    }
+
+    function applyPreset(presetKey) {
+      if (presetKey === "custom") return;
+      if (DEFAULT_PRESETS[presetKey]) {
+        activeColumns = [...DEFAULT_PRESETS[presetKey]];
+      } else if (savedPresets[presetKey]) {
+        activeColumns = [...savedPresets[presetKey]];
+      }
+      renderFilteredTable();
+      saveSettingsToBackend();
+    }
+
+    function saveSettingsToBackend() {
+      const payload = {
+        presets: savedPresets,
+        activeColumns: activeColumns,
+        fontSize: currentFontSize
+      };
+      fetch(`${GOOGLE_WEB_APP_URL}?action=saveSettings&settings=${encodeURIComponent(JSON.stringify(payload))}`)
+        .then(() => console.log("Settings synced successfully"))
+        .catch(err => console.error("Setting sync error:", err));
+    }
+
+    let scene, camera, renderer, controls;
+    let beanMeshes = [];
+    let current3DMode = 'overlay';
+
+    function toggleRowSelection(originalIdx, checked) {
+      if (checked) selectedRowIndices.add(originalIdx);
+      else selectedRowIndices.delete(originalIdx);
+      update3DButtonState();
+    }
+
+    function toggleSelectAllRows(checked) {
+      const inputs = document.querySelectorAll('#tableBody input[type="checkbox"]');
+      inputs.forEach(i => i.checked = checked);
+      if (checked) {
+        rawDataRows.forEach((_, idx) => selectedRowIndices.add(idx));
+      } else {
+        selectedRowIndices.clear();
+      }
+      update3DButtonState();
+    }
+
+    function update3DButtonState() {
+      const btn = document.getElementById('btn3D');
+      const count = selectedRowIndices.size;
+      document.getElementById('selectedCount').innerText = count;
+      if (count > 0) {
+        btn.disabled = false;
+        btn.className = "px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1 cursor-pointer transition";
+      } else {
+        btn.disabled = true;
+        btn.className = "px-3 py-1.5 bg-gray-300 text-gray-500 text-xs font-bold rounded-lg flex items-center gap-1 cursor-not-allowed transition";
+      }
+    }
+
+    function open3DViewer() {
+      document.getElementById('modal3D').classList.remove('hidden');
+      initThreeJS();
+      render3DBeans();
+    }
+
+    function close3DViewer() {
+      document.getElementById('modal3D').classList.add('hidden');
+      if (renderer) renderer.dispose();
+    }
+
+    function initThreeJS() {
+      const container = document.getElementById('canvas3dContainer');
+      container.innerHTML = '';
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x111827);
+
+      camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+      camera.position.set(0, 18, 25);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight.position.set(10, 20, 10);
+      scene.add(dirLight);
+
+      const grid = new THREE.GridHelper(30, 30, 0x059669, 0x374151);
+      grid.position.y = -0.01;
+      scene.add(grid);
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+    }
+
+    function render3DBeans() {
+      beanMeshes.forEach(m => scene.remove(m));
+      beanMeshes = [];
+
+      const specBody = document.getElementById('specTableBody');
+      specBody.innerHTML = '';
+
+      const colors = [0x10b981, 0xf59e0b, 0x8b5cf6, 0x06b6d4, 0xef4444, 0xec4899];
+      const indices = Array.from(selectedRowIndices);
+
+      indices.forEach((rIdx, i) => {
+        const row = rawDataRows[rIdx];
+        const nameIdx = allHeaders.indexOf('커피 이름');
+        const lIdx = allHeaders.indexOf('길이 평균');
+        const wIdx = allHeaders.indexOf('폭 평균');
+        const tIdx = allHeaders.indexOf('두께 평균');
+        const vIdx = allHeaders.indexOf('부피 평균');
+        const hIdx = allHeaders.indexOf('경도 평균');
+
+        const coffeeName = nameIdx !== -1 ? row[nameIdx] : `Sample #${i+1}`;
+        const L = (lIdx !== -1 && row[lIdx]) ? parseFloat(row[lIdx]) : 8.5;
+        const W = (wIdx !== -1 && row[wIdx]) ? parseFloat(row[wIdx]) : 6.5;
+        const T = (tIdx !== -1 && row[tIdx]) ? parseFloat(row[tIdx]) : 3.8;
+        const vol = (vIdx !== -1 && row[vIdx]) ? parseFloat(row[vIdx]).toFixed(1) : "-";
+        const hard = (hIdx !== -1 && row[hIdx]) ? parseFloat(row[hIdx]).toFixed(1) : "-";
+
+        const colorHex = colors[i % colors.length];
+
+        const geometry = new THREE.SphereGeometry(1, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+        const material = new THREE.MeshStandardMaterial({
+          color: colorHex,
+          transparent: true,
+          opacity: current3DMode === 'overlay' ? 0.65 : 0.9,
+          roughness: 0.35,
+          metalness: 0.1
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.scale.set(L / 2, T, W / 2);
+
+        const bottomGeo = new THREE.CircleGeometry(1, 32);
+        bottomGeo.rotateX(Math.PI / 2);
+        const bottomMesh = new THREE.Mesh(bottomGeo, material);
+        bottomMesh.scale.set(L / 2, 1, W / 2);
+        mesh.add(bottomMesh);
+
+        if (current3DMode === 'overlay') {
+          mesh.position.set(0, 0, 0);
+        } else {
+          const spacing = 12;
+          const startX = -((indices.length - 1) * spacing) / 2;
+          mesh.position.set(startX + i * spacing, 0, 0);
+        }
+
+        scene.add(mesh);
+        beanMeshes.push(mesh);
+
+        const tr = document.createElement('tr');
+        const hexStr = "#" + colorHex.toString(16).padStart(6, '0');
+        tr.innerHTML = `
+          <td class="p-2"><span class="inline-block w-3 h-3 rounded-full" style="background-color: ${hexStr};"></span></td>
+          <td class="p-2 font-bold">${coffeeName}</td>
+          <td class="p-2">${L} mm</td>
+          <td class="p-2">${W} mm</td>
+          <td class="p-2">${T} mm</td>
+          <td class="p-2">${vol}</td>
+          <td class="p-2">${hard}</td>
+        `;
+        specBody.appendChild(tr);
+      });
+    }
+
+    function set3DMode(mode) {
+      current3DMode = mode;
+      const btnO = document.getElementById('btnModeOverlay');
+      const btnS = document.getElementById('btnModeSide');
+      if (mode === 'overlay') {
+        btnO.className = "px-2.5 py-1 font-bold rounded bg-emerald-600 text-white shadow-sm";
+        btnS.className = "px-2.5 py-1 font-bold rounded text-gray-600";
+      } else {
+        btnS.className = "px-2.5 py-1 font-bold rounded bg-emerald-600 text-white shadow-sm";
+        btnO.className = "px-2.5 py-1 font-bold rounded text-gray-600";
+      }
+      render3DBeans();
+    }
+
+    function capture3DImage() {
+      if (!renderer) return;
+      const dataUrl = renderer.domElement.toDataURL("image/png");
+      const link = document.createElement('a');
+      link.download = `coffee_bean_3d_${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+    }
+
+    function quickSearchFilter(val) {
+      const q = val.toLowerCase();
+      const trs = document.querySelectorAll('#tableBody tr');
+      trs.forEach(tr => {
+        const text = tr.innerText.toLowerCase();
+        tr.style.display = text.includes(q) ? '' : 'none';
+      });
+    }
+  </script>
+</body>
+</html>
